@@ -194,6 +194,10 @@ The script provides detailed logging including:
 - **Default**: Logs to both console and `telegram_forwarder.log` file
 - **Quiet mode** (`-q` flag): Logs only to `telegram_forwarder.log` file
 
+### Render free web service health check
+
+When Render provides a `PORT` environment variable, the forwarder listens on `0.0.0.0:$PORT` and serves `GET /healthz`. It returns HTTP 200 when the Telegram client and forwarding handlers are ready, and HTTP 503 while starting or disconnected. For a Render free web service, configure an external uptime monitor to check `https://YOUR-SERVICE.onrender.com/healthz` every 5 minutes. Render may still restart free services, and monthly free instance hours are shared across the workspace.
+
 ### Forward Signature Options
 - **Default**: Messages are forwarded with "Forward from..." signature
 - **Remove signature** (`-r` flag): Messages are sent as new messages without the forward signature

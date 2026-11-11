@@ -76,6 +76,8 @@ class TelegramForwarder:
         
         # Parse forwarding configuration
         self.forwarding_map = self._parse_forwarding_rules()
+        self.ready = False
+        self.health_server = None
         
         if not self.forwarding_map:
             raise ValueError("No forwarding rules configured. Set either SOURCE_ID/TARGET_ID or FORWARDING_RULES.")
@@ -272,8 +274,18 @@ class TelegramForwarder:
     async def run(self):
         """Main method to run the forwarder."""
         try:
+            port = os.getenv('PORT')
+            if port:
+                self.health_server = await asyncio.start_server(
+                    self._handle_health_request,
+                    host='0.0.0.0',
+                    port=int(port),
+                )
+                logger.info("Health endpoint listening on 0.0.0.0:%s/healthz", port)
+
             await self.start_client()
             await self.setup_forwarding()
+            self.ready = True
             
             logger.info("Telegram forwarder is now running. Press Ctrl+C to stop.")
             await self.client.run_until_disconnected()
@@ -283,8 +295,45 @@ class TelegramForwarder:
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
         finally:
+            self.ready = False
+            if self.health_server:
+                self.health_server.close()
+                await self.health_server.wait_closed()
             await self.client.disconnect()
             logger.info("Client disconnected")
+
+    async def _handle_health_request(self, reader, writer):
+        """Serve a small HTTP health check for Render and uptime monitors."""
+        status = '404 Not Found'
+        body = 'not found'
+        try:
+            request_line = await asyncio.wait_for(reader.readline(), timeout=5)
+            parts = request_line.decode('latin-1').strip().split()
+            if len(parts) >= 2 and parts[0] == 'GET':
+                path = parts[1].split('?', 1)[0]
+                if path == '/healthz':
+                    if self.ready and self.client.is_connected():
+                        status, body = '200 OK', 'ok'
+                    else:
+                        status, body = '503 Service Unavailable', 'starting'
+            elif parts:
+                status, body = '405 Method Not Allowed', 'method not allowed'
+        except (asyncio.TimeoutError, UnicodeDecodeError):
+            status, body = '400 Bad Request', 'bad request'
+
+        payload = body.encode('utf-8')
+        response = (
+            f"HTTP/1.1 {status}\r\n"
+            "Content-Type: text/plain; charset=utf-8\r\n"
+            f"Content-Length: {len(payload)}\r\n"
+            "Connection: close\r\n\r\n"
+        ).encode('ascii') + payload
+        writer.write(response)
+        try:
+            await writer.drain()
+        finally:
+            writer.close()
+            await writer.wait_closed()
 
 async def main():
     """Main function to run the application."""
