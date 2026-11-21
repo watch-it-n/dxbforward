@@ -104,6 +104,10 @@ In bot mode, sending `/start` to the bot in a private chat returns an online sta
 
 The script will run continuously and forward any new messages from the source to the target.
 
+### Show title filter
+
+Only messages whose text or media caption contains one of the allowed show titles are forwarded. Matching ignores capitalization and punctuation/separators, including spaces, dots, underscores, and hyphens; for example, `Roadies.Rebirth`, `Roadies_Rebirth`, and `R.o.a.d.i.e.s` match `Roadies Rebirth`. Messages with no matching title, including media without a caption, are skipped. The current allow-list is maintained in `telegram_forwarder.py`.
+
 ## Configuration Options
 
 ### Environment Variables
