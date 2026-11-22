@@ -12,47 +12,23 @@ from telethon.tl.types import PeerUser, PeerChat, PeerChannel
 load_dotenv()
 
 
-# Only messages whose text/caption contains one of these show titles are sent.
-# Titles are compared after removing punctuation, spaces, symbols, and other
-# separators, so variants such as "Roadies.Rebirth" and "R.o.a.d.i.e.s" match.
-ALLOWED_SHOW_TITLES = (
-    "Roadies Rebirth",
-    "Indian Game Show",
-    "IDS Got Talent",
-    "India Got Talent",
-    "India's Got Talent",
-    "Bigg Boss 20",
-    "Koffee with Karan",
-    "Family Full House with Rohi Sharma",
-    "Family Full House with Rohit Sharma",
-    "Rise and Fall",
-    "I Pop Star",
-    "Great Indian Kapil Show",
-    "Pati Patni Aur Panga Season 2",
-    "Indian Idol Legends",
+# Forward media only when its caption contains at least one of these keywords.
+CAPTION_KEYWORDS = (
+    "BBHin",
+    "Family",
+    "Rohit",
     "Hustle",
+    "Popstar",
+    "Roadies",
+    "Rebirth",
+    "panga",
+    "pati.patni",
+    "indian",
+    "idol",
+    "latent",
+    "kapil",
+    "koffee",
 )
-
-
-def normalize_title_text(text):
-    """Keep only letters and digits, making arbitrary separators irrelevant."""
-    return "".join(character for character in text.casefold() if character.isalnum())
-
-
-NORMALIZED_ALLOWED_SHOW_TITLES = tuple(
-    normalize_title_text(title) for title in ALLOWED_SHOW_TITLES
-)
-
-
-def find_allowed_show(text):
-    """Return the matched title, or None when the message is not allow-listed."""
-    normalized_text = normalize_title_text(text or "")
-    for title, normalized_title in zip(
-        ALLOWED_SHOW_TITLES, NORMALIZED_ALLOWED_SHOW_TITLES
-    ):
-        if normalized_title in normalized_text:
-            return title
-    return None
 
 
 def add_infinity_to_video_caption(caption):
@@ -248,14 +224,22 @@ class TelegramForwarder:
                 source_id = event.chat_id
                 sender_id = message.sender_id if message.sender_id else "Unknown"
 
-                matched_show = find_allowed_show(message.message)
-                if not matched_show:
+                if not message.media:
+                    logger.info("Skipped message from %s: no file/media", source_id)
+                    return
+
+                caption = message.message or ""
+                matched_keyword = next(
+                    (keyword for keyword in CAPTION_KEYWORDS if keyword.casefold() in caption.casefold()),
+                    None,
+                )
+                if not matched_keyword:
                     logger.info(
-                        "Skipped message from %s: no allowed show title found",
+                        "Skipped media from %s: caption has none of the configured keywords",
                         source_id,
                     )
                     return
-                
+
                 # Get target IDs for this source
                 target_ids = self.forwarding_map.get(source_id, [])
                 if not target_ids:
@@ -264,8 +248,8 @@ class TelegramForwarder:
                 
                 source_info = await self.get_entity_info(source_id)
                 logger.info(
-                    "Received message for %s from %s in %s",
-                    matched_show,
+                    "Received media matching '%s' from %s in %s",
+                    matched_keyword,
                     sender_id,
                     source_info,
                 )
